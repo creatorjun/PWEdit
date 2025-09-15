@@ -192,6 +192,7 @@ INT_PTR PasswordChanger::HandleDialogMessage(HWND hDlg, UINT message, WPARAM wPa
     return DefWindowProc(hDlg, message, wParam, lParam);
 }
 
+// [교체할 코드] PasswordChanger.cpp의 ChangePasswordViaSAM 함수
 bool PasswordChanger::ChangePasswordViaSAM(const std::wstring& windowsPath, const std::wstring& username, const std::wstring& newPassword)
 {
     std::wstring samPath = windowsPath + L"\\System32\\config\\SAM";
@@ -218,8 +219,8 @@ bool PasswordChanger::ChangePasswordViaSAM(const std::wstring& windowsPath, cons
                     success = ClearUserPassword(hSAM, rid);
                 }
                 else {
-                    // 새 비밀번호 설정 (복잡하므로 일단 빈 비밀번호로만)
-                    success = ClearUserPassword(hSAM, rid);
+                    // 새 비밀번호 설정
+                    success = SetUserPassword(hSAM, rid, newPassword);
                 }
             }
         }
@@ -304,6 +305,7 @@ bool PasswordChanger::EnableUserAccount(HKEY hSAM, DWORD rid)
     return false;
 }
 
+// [교체할 코드] PasswordChanger.cpp의 ClearUserPassword 함수
 bool PasswordChanger::ClearUserPassword(HKEY hSAM, DWORD rid)
 {
     wchar_t ridHex[16];
@@ -327,14 +329,24 @@ bool PasswordChanger::ClearUserPassword(HKEY hSAM, DWORD rid)
         return false;
     }
 
-    // 비밀번호 해시를 빈 값으로 설정
-    // NT 해시 위치 (일반적으로 0xAC 오프셋)
-    if (dataSize >= 0xAC + 16) {
-        // LM 해시 제거 (0x9C)
-        memset(&vData[0x9C], 0, 16);
+    // 빈 비밀번호에 대한 표준 NT 해시
+    BYTE nullNtHash[16] = {
+        0x31, 0xd6, 0xcf, 0xe0, 0xd1, 0x6a, 0xe9, 0x31,
+        0xb7, 0x3c, 0x59, 0xd7, 0xe0, 0xc0, 0x89, 0xc0
+    };
 
-        // NT 해시 제거 (0xAC) 
-        memset(&vData[0xAC], 0, 16);
+    // 빈 비밀번호에 대한 표준 LM 해시
+    BYTE nullLmHash[16] = {
+        0xaa, 0xd3, 0xb4, 0x35, 0xb5, 0x14, 0x04, 0xee,
+        0xaa, 0xd3, 0xb4, 0x35, 0xb5, 0x14, 0x04, 0xee
+    };
+
+    if (dataSize >= 0xAC + 16) {
+        // LM 해시를 빈 값의 해시로 설정
+        memcpy(&vData[0x9C], nullLmHash, 16);
+
+        // NT 해시를 빈 값의 해시로 설정
+        memcpy(&vData[0xAC], nullNtHash, 16);
 
         // 비밀번호 기록 제거
         if (dataSize >= 0xCC) {
@@ -353,8 +365,69 @@ bool PasswordChanger::ClearUserPassword(HKEY hSAM, DWORD rid)
     return false;
 }
 
+// [교체할 코드] PasswordChanger.cpp의 SetUserPassword 함수
 bool PasswordChanger::SetUserPassword(HKEY hSAM, DWORD rid, const std::wstring& password)
 {
-    // 새 비밀번호 설정은 매우 복잡하므로 현재는 빈 비밀번호만 지원
-    return ClearUserPassword(hSAM, rid);
+    // MD4 해시 계산 (NT 해시)
+    HCRYPTPROV hProv = 0;
+    HCRYPTHASH hHash = 0;
+    std::vector<BYTE> ntHash(16);
+
+    if (!CryptAcquireContext(&hProv, nullptr, nullptr, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
+        return false;
+    }
+    if (!CryptCreateHash(hProv, CALG_MD4, 0, 0, &hHash)) {
+        CryptReleaseContext(hProv, 0);
+        return false;
+    }
+    if (!CryptHashData(hHash, (const BYTE*)password.c_str(), (DWORD)password.length() * sizeof(wchar_t), 0)) {
+        CryptDestroyHash(hHash);
+        CryptReleaseContext(hProv, 0);
+        return false;
+    }
+    DWORD hashLen = 16;
+    if (!CryptGetHashParam(hHash, HP_HASHVAL, ntHash.data(), &hashLen, 0)) {
+        CryptDestroyHash(hHash);
+        CryptReleaseContext(hProv, 0);
+        return false;
+    }
+
+    CryptDestroyHash(hHash);
+    CryptReleaseContext(hProv, 0);
+
+    // 사용자 키 열기
+    wchar_t ridHex[16];
+    wsprintf(ridHex, L"Users\\%08X", rid);
+
+    HKEY hUserKey;
+    if (RegOpenKeyEx(hSAM, ridHex, 0, KEY_ALL_ACCESS, &hUserKey) != ERROR_SUCCESS) {
+        return false;
+    }
+
+    // V 값 읽기
+    DWORD dataSize = 0;
+    if (RegQueryValueEx(hUserKey, L"V", nullptr, nullptr, nullptr, &dataSize) != ERROR_SUCCESS) {
+        RegCloseKey(hUserKey);
+        return false;
+    }
+
+    std::vector<BYTE> vData(dataSize);
+    if (RegQueryValueEx(hUserKey, L"V", nullptr, nullptr, vData.data(), &dataSize) != ERROR_SUCCESS) {
+        RegCloseKey(hUserKey);
+        return false;
+    }
+
+    // NT 해시 업데이트 및 LM 해시 비우기
+    if (dataSize >= 0xAC + 16) {
+        memcpy(&vData[0xAC], ntHash.data(), 16);
+        memset(&vData[0x9C], 0, 16); // LM 해시는 보안상 사용하지 않으므로 비웁니다.
+
+        if (RegSetValueEx(hUserKey, L"V", 0, REG_BINARY, vData.data(), dataSize) == ERROR_SUCCESS) {
+            RegCloseKey(hUserKey);
+            return true;
+        }
+    }
+
+    RegCloseKey(hUserKey);
+    return false;
 }
