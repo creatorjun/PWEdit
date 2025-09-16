@@ -1,29 +1,28 @@
-﻿#include <windows.h>
-#include <commctrl.h>
-#include <objbase.h>
+﻿#include "framework.h"
+#include "PWEdit.h"
 #include "MainWindow.h"
+#include <objbase.h> // CoInitializeEx를 위해 추가
 
-#pragma comment(lib, "comctl32.lib")
-#pragma comment(lib, "shlwapi.lib")
-#pragma comment(lib, "shell32.lib")
-#pragma comment(lib, "advapi32.lib")
-#pragma comment(lib, "ole32.lib")
-
-int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
+    _In_opt_ HINSTANCE hPrevInstance,
+    _In_ LPWSTR    lpCmdLine,
+    _In_ int       nCmdShow)
 {
-    // COM 초기화
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    UNREFERENCED_PARAMETER(hPrevInstance);
+    UNREFERENCED_PARAMETER(lpCmdLine);
 
-    // Common Controls 초기화
-    INITCOMMONCONTROLSEX icex;
-    icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
-    icex.dwICC = ICC_LISTVIEW_CLASSES | ICC_PROGRESS_CLASS | ICC_BAR_CLASSES;
-    InitCommonControlsEx(&icex);
+    // COM 라이브러리 초기화
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    if (FAILED(hr)) {
+        MessageBox(nullptr, L"COM 라이브러리를 초기화할 수 없습니다.", L"치명적 오류", MB_OK | MB_ICONERROR);
+        return 1;
+    }
 
-    // 메인 윈도우 생성 및 실행
-    MainWindow mainWindow(hInstance);
-    int result = mainWindow.Run(nCmdShow);
+    MainWindow win(hInstance);
+    int result = win.Run(nCmdShow);
 
+    // COM 라이브러리 해제
     CoUninitialize();
+
     return result;
 }
