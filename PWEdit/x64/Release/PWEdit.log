@@ -7,6 +7,6 @@
 x64\Release\MainWindow.obj : warning LNK4042: 개체가 두 번 이상 지정되었습니다. 나머지는 무시됩니다.
   코드를 생성하고 있습니다.
   Previous IPDB not found, fall back to full compilation.
-  All 567 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  All 575 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
   코드를 생성했습니다.
   PWEdit.vcxproj -> D:\kdic\Desktop\Source\PWEdit\x64\Release\PWEdit.exe

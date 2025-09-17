@@ -1,0 +1,51 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0-rtm.5.json",
+  "runs": [
+    {
+      "results": [],
+      "tool": {
+        "driver": {
+          "name": "PREfast",
+          "fullName": "MSVC Code Analysis",
+          "version": "14.44.35216.0",
+          "informationUri": "https://aka.ms/cpp/ca"
+        }
+      },
+      "invocations": [
+        {
+          "executionSuccessful": true
+        }
+      ],
+      "artifacts": [
+        {
+          "location": {
+            "uri": "file:///d:/kdic/desktop/source/pwedit/pwedit/uicomponents.cpp"
+          },
+          "roles": [
+            "analysisTarget"
+          ],
+          "hashes": {
+            "sha-256": "00c0fcc822e15cb412b906dba73e9f1eaa13500e242c84e9603b2fa0fe09c4ec"
+          }
+        },
+        {
+          "location": {
+            "uri": "file:///d:/kdic/desktop/source/pwedit/pwedit/uicomponents.h"
+          },
+          "hashes": {
+            "sha-256": "d3b0a45704ab31254191ab8d1876c6e12578c7470ac7d7208f65c59dcbc7750b"
+          }
+        },
+        {
+          "location": {
+            "uri": "file:///d:/kdic/desktop/source/pwedit/pwedit/windowsusermanager.h"
+          },
+          "hashes": {
+            "sha-256": "923e856e95c1752682672e6788daff5f359f38fb93f4473d4f5bb11a58c6e6f4"
+          }
+        }
+      ]
+    }
+  ]
+}
