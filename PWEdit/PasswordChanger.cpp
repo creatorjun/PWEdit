@@ -13,7 +13,7 @@
 
 // --- ntpwedit 암호화 로직 C++ 포팅 ---
 
-// MD4 내부 구현 (from ntpwedit/libntpw/libtomcrypt/src/hashes/md4.c)
+// MD4 내부 구현
 namespace MD4 {
     struct hash_state {
         UINT64 length;
@@ -25,6 +25,7 @@ namespace MD4 {
 #define G(x, y, z) ((x & y) | (z & (x | y)))
 #define H(x, y, z) (x ^ y ^ z)
 #define ROLc(x, y) ( (x << y) | (x >> (32 - y)) )
+#define RORc(x, y) ( (x >> y) | (x << (32 - y)) ) // RORc 매크로 정의 추가
 
 #define FF(a, b, c, d, x, s) { a += F(b, c, d) + x; a = ROLc(a, s); }
 #define GG(a, b, c, d, x, s) { a += G(b, c, d) + x + 0x5a827999UL; a = ROLc(a, s); }
@@ -134,7 +135,6 @@ void NtpwCrypto::SidToKey(DWORD rid, bool isSecondKey, BYTE* desKey) {
     str_to_key(s, desKey);
 }
 
-
 bool NtpwCrypto::EncryptNtHash(DWORD rid, const BYTE* ntHash, BYTE* encryptedNtHash) {
     BYTE desKey1[8], desKey2[8];
     SidToKey(rid, false, desKey1);
@@ -184,7 +184,7 @@ void NtpwCrypto::des_setup(const BYTE* key, symmetric_key* skey) {
 }
 
 void NtpwCrypto::des_ecb_encrypt(const BYTE* pt, BYTE* ct, symmetric_key* skey) {
-    ULONG left, right, work, temp;
+    ULONG left, right, work;
     left = (pt[0] << 24) | (pt[1] << 16) | (pt[2] << 8) | pt[3];
     right = (pt[4] << 24) | (pt[5] << 16) | (pt[6] << 8) | pt[7];
 
@@ -192,25 +192,24 @@ void NtpwCrypto::des_ecb_encrypt(const BYTE* pt, BYTE* ct, symmetric_key* skey) 
     work = ((left >> 16) ^ right) & 0x0000ffff; right ^= work; left ^= (work << 16);
     work = ((right >> 2) ^ left) & 0x33333333; left ^= work; right ^= (work << 2);
     work = ((right >> 8) ^ left) & 0x00ff00ff; left ^= work; right ^= (work << 8);
-    right = (right << 1) | (right >> 31);
+    right = ROLc(right, 1);
     work = (left ^ right) & 0xaaaaaaaa; left ^= work; right ^= work;
-    left = (left << 1) | (left >> 31);
+    left = ROLc(left, 1);
 
     for (int i = 0; i < 8; i++) {
-        work = ((right >> 4) | (right << 28)) ^ skey->ek[4 * i];
-        temp = left ^ (DES_CONST::SP7[work & 0x3f] | DES_CONST::SP5[(work >> 8) & 0x3f] | DES_CONST::SP3[(work >> 16) & 0x3f] | DES_CONST::SP1[(work >> 24) & 0x3f]);
+        work = RORc(right, 4) ^ skey->ek[4 * i];
+        left ^= DES_CONST::SP7[work & 0x3f] ^ DES_CONST::SP5[(work >> 8) & 0x3f] ^ DES_CONST::SP3[(work >> 16) & 0x3f] ^ DES_CONST::SP1[(work >> 24) & 0x3f];
         work = right ^ skey->ek[4 * i + 1];
-        temp ^= (DES_CONST::SP8[work & 0x3f] | DES_CONST::SP6[(work >> 8) & 0x3f] | DES_CONST::SP4[(work >> 16) & 0x3f] | DES_CONST::SP2[(work >> 24) & 0x3f]);
-        work = ((temp >> 4) | (temp << 28)) ^ skey->ek[4 * i + 2];
-        right ^= (DES_CONST::SP7[work & 0x3f] | DES_CONST::SP5[(work >> 8) & 0x3f] | DES_CONST::SP3[(work >> 16) & 0x3f] | DES_CONST::SP1[(work >> 24) & 0x3f]);
-        work = temp ^ skey->ek[4 * i + 3];
-        right ^= (DES_CONST::SP8[work & 0x3f] | DES_CONST::SP6[(work >> 8) & 0x3f] | DES_CONST::SP4[(work >> 16) & 0x3f] | DES_CONST::SP2[(work >> 24) & 0x3f]);
-        left = temp;
+        left ^= DES_CONST::SP8[work & 0x3f] ^ DES_CONST::SP6[(work >> 8) & 0x3f] ^ DES_CONST::SP4[(work >> 16) & 0x3f] ^ DES_CONST::SP2[(work >> 24) & 0x3f];
+        work = RORc(left, 4) ^ skey->ek[4 * i + 2];
+        right ^= DES_CONST::SP7[work & 0x3f] ^ DES_CONST::SP5[(work >> 8) & 0x3f] ^ DES_CONST::SP3[(work >> 16) & 0x3f] ^ DES_CONST::SP1[(work >> 24) & 0x3f];
+        work = left ^ skey->ek[4 * i + 3];
+        right ^= DES_CONST::SP8[work & 0x3f] ^ DES_CONST::SP6[(work >> 8) & 0x3f] ^ DES_CONST::SP4[(work >> 16) & 0x3f] ^ DES_CONST::SP2[(work >> 24) & 0x3f];
     }
 
-    right = (right << 31) | (right >> 1);
+    left = RORc(left, 1);
+    right = RORc(right, 1);
     work = (left ^ right) & 0xaaaaaaaa; left ^= work; right ^= work;
-    right = (right << 31) | (right >> 1);
     work = ((left >> 8) ^ right) & 0x00ff00ff; right ^= work; left ^= (work << 8);
     work = ((left >> 2) ^ right) & 0x33333333; right ^= work; left ^= (work << 2);
     work = ((right >> 16) ^ left) & 0x0000ffff; left ^= work; right ^= (work << 16);
@@ -220,8 +219,7 @@ void NtpwCrypto::des_ecb_encrypt(const BYTE* pt, BYTE* ct, symmetric_key* skey) 
     ct[4] = (BYTE)(left >> 24); ct[5] = (BYTE)(left >> 16); ct[6] = (BYTE)(left >> 8); ct[7] = (BYTE)left;
 }
 
-
-// --- 기존 클래스 멤버 함수들 ---
+// --- 기존 클래스 멤버 함수들 (이하 동일) ---
 
 PasswordChanger::PasswordChanger() :m_hParent(nullptr), m_result(false) {}
 PasswordChanger::~PasswordChanger() {}
@@ -342,7 +340,6 @@ bool PasswordChanger::ClearUserPassword(HKEY hSAM, DWORD rid) {
     }
     RegCloseKey(hUserKey); return false;
 }
-
 
 bool PasswordChanger::SetUserPassword(HKEY hSAM, DWORD rid, const std::wstring& password) {
     BYTE ntHash[16];
